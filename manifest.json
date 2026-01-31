@@ -1,0 +1,8 @@
+{
+  "id": "journalite",
+  "name": "Journalite",
+  "version": "0.1.0",
+  "minAppVersion": "1.0.0",
+  "description": "カレンダーとタスク一覧を表示するサイドパネル",
+  "author": "shuhei-yoshida"
+}
