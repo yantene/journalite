@@ -1,0 +1,323 @@
+/* Journalite Plugin Styles */
+
+.journalite-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 8px;
+}
+
+/* Calendar Styles */
+.journalite-calendar {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.journalite-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 4px;
+}
+
+.journalite-calendar-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.journalite-nav-btn,
+.journalite-today-btn {
+  padding: 4px 8px;
+  border: none;
+  background: var(--background-modifier-border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.journalite-nav-btn:hover,
+.journalite-today-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.journalite-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+}
+
+.journalite-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.journalite-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+}
+
+.journalite-day:hover {
+  background: var(--background-modifier-hover);
+}
+
+.journalite-day-empty {
+  cursor: default;
+}
+
+.journalite-day-empty:hover {
+  background: transparent;
+}
+
+.journalite-sunday {
+  color: var(--text-error);
+}
+
+.journalite-saturday {
+  color: var(--color-blue);
+}
+
+.journalite-today {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
+.journalite-today:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.journalite-has-note::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-accent);
+}
+
+.journalite-today.journalite-has-note::after {
+  background: var(--text-on-accent);
+}
+
+/* Task List Styles */
+.journalite-tasks {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.journalite-section {
+  margin-bottom: 16px;
+}
+
+.journalite-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.journalite-date-header {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin: 8px 0 4px 0;
+}
+
+.journalite-task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px 0;
+}
+
+.journalite-task-item {
+  padding: 4px 0;
+}
+
+.journalite-task-link {
+  color: var(--text-normal);
+  text-decoration: none;
+  font-size: 13px;
+  display: block;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.journalite-task-link:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-accent);
+}
+
+/* Section Colors */
+.journalite-overdue .journalite-section-title {
+  color: var(--text-error);
+}
+
+.journalite-today-section .journalite-section-title {
+  color: var(--color-blue);
+}
+
+.journalite-upcoming .journalite-section-title {
+  color: var(--color-green);
+}
+
+.journalite-no-schedule .journalite-section-title {
+  color: var(--text-muted);
+}
+
+/* Empty States */
+.journalite-empty,
+.journalite-loading {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 16px;
+}
+
+/* Daily Task Item */
+.journalite-daily-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  list-style: none;
+}
+
+.journalite-daily-task:hover {
+  background: var(--background-modifier-hover);
+}
+
+.journalite-daily-task .task-list-item-checkbox {
+  /* Obsidian の CSS 変数を使用 */
+  appearance: none;
+  -webkit-appearance: none;
+  width: var(--checkbox-size, 16px);
+  height: var(--checkbox-size, 16px);
+  border: 1px solid var(--checkbox-border-color, var(--text-faint));
+  border-radius: var(--checkbox-radius, 4px);
+  background-color: var(--background-primary);
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  position: relative;
+}
+
+.journalite-daily-task .task-list-item-checkbox:hover {
+  border-color: var(--checkbox-border-color-hover, var(--text-muted));
+}
+
+.journalite-daily-task .task-list-item-checkbox:checked {
+  background-color: var(--checkbox-color, var(--interactive-accent));
+  border-color: var(--checkbox-color, var(--interactive-accent));
+}
+
+.journalite-daily-task .task-list-item-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--text-on-accent, white);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.journalite-task-text {
+  cursor: pointer;
+}
+
+.journalite-task-text:hover {
+  color: var(--text-accent);
+}
+
+/* Rich Task Item (type: task) */
+.journalite-task-item-rich {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  list-style: none;
+}
+
+.journalite-task-item-rich:hover {
+  background: var(--background-modifier-hover);
+}
+
+.journalite-task-item-rich .task-list-item-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: var(--checkbox-size, 16px);
+  height: var(--checkbox-size, 16px);
+  border: 1px solid var(--checkbox-border-color, var(--text-faint));
+  border-radius: var(--checkbox-radius, 4px);
+  background-color: var(--background-primary);
+  margin: 0;
+  margin-top: 2px;
+  flex-shrink: 0;
+  cursor: pointer;
+  position: relative;
+}
+
+.journalite-task-item-rich .task-list-item-checkbox:hover {
+  border-color: var(--checkbox-border-color-hover, var(--text-muted));
+}
+
+.journalite-task-item-rich .task-list-item-checkbox:checked {
+  background-color: var(--checkbox-color, var(--interactive-accent));
+  border-color: var(--checkbox-color, var(--interactive-accent));
+}
+
+.journalite-task-item-rich .task-list-item-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--text-on-accent, white);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.journalite-task-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.journalite-task-name {
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.journalite-task-name:hover {
+  color: var(--text-accent);
+}
+
+.journalite-task-period {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
