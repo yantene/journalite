@@ -4,10 +4,69 @@ A calendar and task management sidebar plugin for Obsidian.
 
 ## Features
 
-- **Calendar View**: Monthly calendar showing daily notes, click to open/create
-- **Task List**: Tasks grouped by Overdue / Today / Upcoming / No Schedule
-- **Task Completion**: Complete tasks directly from the sidebar
-- **Task Creation**: Right-click calendar dates to create tasks with start/due dates
+### Calendar
+- Monthly calendar view
+- Dots indicate days with Daily notes
+- Click a date to open/create Daily note
+- Right-click menu to open Daily note
+
+### Task List
+Tasks are categorized and displayed as:
+- **Overdue**: Past due tasks
+- **Today**: Today's tasks
+- **Upcoming**: Tasks within the next 2 weeks
+- **No Schedule**: Task notes without dates
+
+### Editor Integration
+- Date patterns (`@YYYY-MM-DD`, etc.) are highlighted
+- Complete checkboxes directly from the sidebar
+
+## Concepts
+
+### Daily Note
+Files named in `YYYY-MM-DD.md` format are automatically recognized as Daily notes.
+
+```
+2025-01-15.md  → Daily note
+my-note.md     → Regular note
+```
+
+### Task Note
+Notes with `done` field in frontmatter are treated as task notes:
+
+```yaml
+---
+done: false
+startDate: 2025-01-01
+dueDate: 2025-01-31
+---
+```
+
+| Field | Description |
+|-------|-------------|
+| `done` | Required. Set `true` to mark as done |
+| `startDate` | Start date (optional) |
+| `dueDate` | Due date (optional) |
+
+Task notes without `startDate` or `dueDate` appear in "No Schedule".
+
+### Task Item
+Checkboxes with a date pattern at the end:
+
+```markdown
+- [ ] Task content @2025-01-15
+```
+
+#### Supported Date Formats
+
+| Pattern | Meaning |
+|---------|---------|
+| `@2025-01-15` | Single date (start = due) |
+| `@2025-01-15..` | Start date only (shown from this date onwards) |
+| `@..2025-01-15` | Due date only (shown until this date) |
+| `@2025-01-01..2025-01-15` | Date range |
+
+Date patterns are highlighted in the editor for visual confirmation.
 
 ## Installation
 
@@ -15,46 +74,6 @@ A calendar and task management sidebar plugin for Obsidian.
 2. Run `npm install`
 3. Run `npm run build`
 4. Enable Journalite in Obsidian Settings → Community Plugins
-
-## Usage
-
-### Daily Notes
-
-Integrates with Obsidian's built-in Daily Notes plugin. Daily notes require this frontmatter:
-
-```yaml
----
-type: daily
----
-```
-
-Filename must be in `YYYY-MM-DD.md` format.
-
-### Task Pages
-
-Files are recognized as tasks when frontmatter contains `type: task`:
-
-```yaml
----
-type: task
-startDate: 2025-01-01
-dueDate: 2025-01-31
-completed: false
----
-```
-
-- `startDate`: Start date (optional)
-- `dueDate`: Due date (optional)
-- `completed`: Completion flag
-
-### Daily Note Tasks
-
-Incomplete checkboxes (`- [ ]`) within daily notes also appear in the task list.
-
-## Settings
-
-- **Tasks Folder**: Destination folder for newly created tasks
-- **Task Template**: Use `task.md` from Obsidian's template folder, or specify a custom path
 
 ## Development
 
