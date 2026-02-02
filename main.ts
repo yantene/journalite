@@ -1,20 +1,17 @@
 import { Plugin, debounce, TFile } from "obsidian";
 import { JournaliteView, VIEW_TYPE_JOURNALITE } from "./src/views/JournaliteView";
-import { JournaliteSettingTab, DEFAULT_SETTINGS, type JournaliteSettings } from "./src/settings";
+import { dateHighlighterPlugin } from "./src/editor/dateHighlighter";
 
 export default class JournalitePlugin extends Plugin {
   private journaliteView: JournaliteView | null = null;
-  settings: JournaliteSettings = DEFAULT_SETTINGS;
 
   async onload(): Promise<void> {
-    await this.loadSettings();
-
-    // Add settings tab
-    this.addSettingTab(new JournaliteSettingTab(this.app, this));
+    // Register editor extension for date highlighting
+    this.registerEditorExtension(dateHighlighterPlugin);
 
     // Register view
     this.registerView(VIEW_TYPE_JOURNALITE, (leaf) => {
-      this.journaliteView = new JournaliteView(leaf, this);
+      this.journaliteView = new JournaliteView(leaf);
       return this.journaliteView;
     });
 
@@ -124,13 +121,5 @@ export default class JournalitePlugin extends Plugin {
     if (this.journaliteView) {
       this.journaliteView.refresh();
     }
-  }
-
-  async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-  }
-
-  async saveSettings(): Promise<void> {
-    await this.saveData(this.settings);
   }
 }
