@@ -11,9 +11,7 @@
   "author": "Shuhei YOSHIDA <contact@yantene.net>",
   "license": "MIT",
   "devDependencies": {
-    "@codemirror/state": "^6.5.4",
-    "@codemirror/view": "^6.39.12",
-    "@types/node": "^20.0.0",
+    "@codemirror/view": "6.38.6",
     "esbuild": "^0.20.0",
     "obsidian": "latest",
     "typescript": "^5.0.0"
