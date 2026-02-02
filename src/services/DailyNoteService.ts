@@ -78,7 +78,7 @@ export class DailyNoteService {
     if (!templateFile) {
       // Default content when no template exists
       const dateStr = formatDate(date);
-      return `---\ntype: daily\ntags:\ndate: "${dateStr}"\n---\n## Journal\n## Thoughts\n- `;
+      return `---\ntags:\ndate: "${dateStr}"\n---\n## Journal\n## Thoughts\n- `;
     }
 
     let content = await this.app.vault.read(templateFile);
@@ -91,7 +91,7 @@ export class DailyNoteService {
     return content;
   }
 
-  /** Get list of existing daily note dates (identified by type: daily, date from filename) */
+  /** Get list of existing daily note dates (identified by YYYY-MM-DD.md filename) */
   getExistingDates(): Set<string> {
     const dates = new Set<string>();
     const files = this.app.vault.getMarkdownFiles();
@@ -100,10 +100,6 @@ export class DailyNoteService {
       // Extract date from filename (YYYY-MM-DD.md format)
       const match = file.name.match(/^(\d{4}-\d{2}-\d{2})\.md$/);
       if (!match) continue;
-
-      const cache = this.app.metadataCache.getFileCache(file);
-      if (!cache?.frontmatter) continue;
-      if (cache.frontmatter.type !== "daily") continue;
 
       dates.add(match[1]);
     }
