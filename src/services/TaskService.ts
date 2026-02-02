@@ -1,6 +1,7 @@
 import type { App, TFile, CachedMetadata } from "obsidian";
-import type { TaskItem, DailyTask, DailyNote, TasksByCategory } from "../types";
+import type { TaskNote, TaskItem, DailyNote, TasksByCategory } from "../types";
 import { formatDate, addDays, getTodayStr } from "../utils/dateUtils";
+import { extractDatesFromText, isActiveOnDate } from "../utils/datePatterns";
 
 export class TaskService {
   constructor(private app: App) {}
@@ -19,32 +20,40 @@ export class TaskService {
     return file.path.startsWith(templatesFolder + "/") || file.path === templatesFolder;
   }
 
-  /** Get all task pages (identified by type: task) */
-  getAllTaskItems(): TaskItem[] {
-    const items: TaskItem[] = [];
+  /** Check if file is a daily note (YYYY-MM-DD.md format) */
+  private isDailyNote(file: TFile): boolean {
+    return /^\d{4}-\d{2}-\d{2}\.md$/.test(file.name);
+  }
+
+  /** Get all task notes (notes with `done` in frontmatter, excluding daily notes) */
+  getAllTaskNotes(): TaskNote[] {
+    const notes: TaskNote[] = [];
     const files = this.app.vault.getMarkdownFiles();
 
     for (const file of files) {
       if (this.isTemplateFile(file)) continue;
+      if (this.isDailyNote(file)) continue;
 
       const cache = this.app.metadataCache.getFileCache(file);
       if (!cache?.frontmatter) continue;
-      if (cache.frontmatter.type !== "task") continue;
 
       const fm = cache.frontmatter;
-      items.push({
+      // Task note must have `done` field in frontmatter
+      if (fm.done === undefined) continue;
+
+      notes.push({
         file,
         name: file.basename,
         startDate: this.normalizeDate(fm.startDate),
         dueDate: this.normalizeDate(fm.dueDate),
-        completed: fm.completed === true,
+        done: fm.done === true,
       });
     }
 
-    return items;
+    return notes;
   }
 
-  /** Get all daily notes (identified by type: daily, date from filename) */
+  /** Get all daily notes (identified by YYYY-MM-DD.md filename) */
   async getAllDailyNotes(): Promise<DailyNote[]> {
     const notes: DailyNote[] = [];
     const files = this.app.vault.getMarkdownFiles();
@@ -57,107 +66,165 @@ export class TaskService {
       if (!match) continue;
 
       const cache = this.app.metadataCache.getFileCache(file);
-      if (!cache?.frontmatter) continue;
-      if (cache.frontmatter.type !== "daily") continue;
-
-      const tasks = await this.extractTasks(file, cache);
-      if (tasks.length > 0) {
-        notes.push({
-          file,
-          date: match[1],
-          tasks,
-        });
-      }
+      const taskItems = await this.extractTaskItems(file, cache ?? undefined);
+      notes.push({
+        file,
+        date: match[1],
+        taskItems,
+      });
     }
 
     return notes;
   }
 
+  /** Get all task items with dates from all notes (excluding daily notes) */
+  async getAllTaskItems(): Promise<TaskItem[]> {
+    const items: TaskItem[] = [];
+    const files = this.app.vault.getMarkdownFiles();
+
+    for (const file of files) {
+      if (this.isTemplateFile(file)) continue;
+      if (this.isDailyNote(file)) continue;
+
+      const cache = this.app.metadataCache.getFileCache(file);
+      if (!cache?.listItems) continue;
+
+      const incompleteTasks = cache.listItems.filter((item) => item.task === " ");
+      if (incompleteTasks.length === 0) continue;
+
+      const content = await this.app.vault.cachedRead(file);
+      const lines = content.split("\n");
+
+      // Build line -> list item map for parent lookup
+      const lineToItem = new Map<number, typeof cache.listItems[0]>();
+      for (const listItem of cache.listItems) {
+        lineToItem.set(listItem.position.start.line, listItem);
+      }
+
+      for (const item of incompleteTasks) {
+        const lineNum = item.position.start.line;
+        const lineText = lines[lineNum] || "";
+        const rawText = lineText.replace(/^[\s]*-\s*\[.\]\s*/, "").trim();
+
+        const { text: textWithoutDate, startDate, dueDate } = extractDatesFromText(rawText);
+
+        // Only include items with at least one date
+        if (!startDate && !dueDate) continue;
+
+        const text = this.stripMarkdown(textWithoutDate);
+        const breadcrumbs = this.buildBreadcrumbs(item, lineToItem, lines);
+
+        items.push({
+          text,
+          line: lineNum,
+          startDate,
+          dueDate,
+          file,
+          breadcrumbs,
+        });
+      }
+    }
+
+    return items;
+  }
+
   /** Strip markdown syntax to plain text */
   private stripMarkdown(text: string): string {
     return text
-      // Wikilinks: [[link|display]] -> display, [[link]] -> link
       .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2")
       .replace(/\[\[([^\]]+)\]\]/g, "$1")
-      // Markdown links: [text](url) -> text
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-      // Bold: **text** or __text__ -> text
       .replace(/\*\*([^*]+)\*\*/g, "$1")
       .replace(/__([^_]+)__/g, "$1")
-      // Italic: *text* or _text_ -> text
       .replace(/\*([^*]+)\*/g, "$1")
       .replace(/_([^_]+)_/g, "$1")
-      // Strikethrough: ~~text~~ -> text
       .replace(/~~([^~]+)~~/g, "$1")
-      // Highlight: ==text== -> text
       .replace(/==([^=]+)==/g, "$1")
-      // Inline code: `code` -> code
       .replace(/`([^`]+)`/g, "$1")
-      // Tags: #tag -> tag
       .replace(/#(\S+)/g, "$1");
   }
 
-  /** Extract tasks from cache (also reads file for task text) */
-  private async extractTasks(file: TFile, cache: CachedMetadata): Promise<DailyTask[]> {
-    const tasks: DailyTask[] = [];
+  /** Extract task items from a file */
+  private async extractTaskItems(file: TFile, cache?: CachedMetadata): Promise<TaskItem[]> {
+    const items: TaskItem[] = [];
 
-    if (!cache.listItems) return tasks;
+    if (!cache?.listItems) return items;
 
-    // Check for incomplete tasks first
-    const incompleteTasks = cache.listItems.filter(
-      (item) => item.task === " "
-    );
-    if (incompleteTasks.length === 0) return tasks;
+    const incompleteTasks = cache.listItems.filter((item) => item.task === " ");
+    if (incompleteTasks.length === 0) return items;
 
-    // Read file content to get task text
     const content = await this.app.vault.cachedRead(file);
     const lines = content.split("\n");
+
+    // Build line -> list item map for parent lookup
+    const lineToItem = new Map<number, typeof cache.listItems[0]>();
+    for (const item of cache.listItems) {
+      lineToItem.set(item.position.start.line, item);
+    }
 
     for (const item of incompleteTasks) {
       const lineNum = item.position.start.line;
       const lineText = lines[lineNum] || "";
-      // Extract task text (remove "- [ ] " prefix)
       const rawText = lineText.replace(/^[\s]*-\s*\[.\]\s*/, "").trim();
-      const text = this.stripMarkdown(rawText);
 
-      tasks.push({
+      const { text: textWithoutDate, startDate, dueDate } = extractDatesFromText(rawText);
+      const text = this.stripMarkdown(textWithoutDate);
+
+      // Build breadcrumbs from parent chain
+      const breadcrumbs = this.buildBreadcrumbs(item, lineToItem, lines);
+
+      items.push({
         text,
-        completed: false,
         line: lineNum,
+        startDate,
+        dueDate,
+        file,
+        breadcrumbs,
       });
     }
 
-    return tasks;
+    return items;
   }
 
-  /** Today check: whether task is active on the given date */
-  isTaskActiveOnDate(task: TaskItem, dateStr: string): boolean {
-    if (task.completed) return false;
+  /** Build breadcrumbs from parent chain */
+  private buildBreadcrumbs(
+    item: { parent: number },
+    lineToItem: Map<number, { parent: number; position: { start: { line: number } } }>,
+    lines: string[]
+  ): string[] {
+    const breadcrumbs: string[] = [];
+    let parentLine = item.parent;
 
-    const { startDate, dueDate } = task;
+    while (parentLine >= 0) {
+      const parentItem = lineToItem.get(parentLine);
+      if (!parentItem) break;
 
-    if (!startDate && !dueDate) return false;
+      const parentText = lines[parentLine] || "";
+      const rawText = parentText.replace(/^[\s]*-\s*(\[.\]\s*)?/, "").trim();
+      const { text: textWithoutDate } = extractDatesFromText(rawText);
+      const text = this.stripMarkdown(textWithoutDate);
 
-    // startDate only: active from startDate onwards
-    if (startDate && !dueDate) {
-      return dateStr >= startDate;
+      if (text) {
+        breadcrumbs.unshift(text);
+      }
+
+      parentLine = parentItem.parent;
     }
 
-    // dueDate only: active every day until dueDate
-    if (!startDate && dueDate) {
-      return dateStr <= dueDate;
-    }
-
-    // both: within range
-    return dateStr >= startDate! && dateStr <= dueDate!;
+    return breadcrumbs;
   }
 
-  /** Overdue/Upcoming check: whether startDate or dueDate matches the given date */
-  shouldShowTaskOnDate(task: TaskItem, dateStr: string): boolean {
-    if (task.completed) return false;
+  /** Check if task note is active on the given date */
+  isTaskNoteActiveOnDate(note: TaskNote, dateStr: string): boolean {
+    if (note.done) return false;
+    return isActiveOnDate(note, dateStr);
+  }
 
-    const { startDate, dueDate } = task;
+  /** Check if task note should show on the given date (matches startDate/dueDate) */
+  shouldShowTaskNoteOnDate(note: TaskNote, dateStr: string): boolean {
+    if (note.done) return false;
 
+    const { startDate, dueDate } = note;
     if (!startDate && !dueDate) return false;
 
     if (dueDate && dateStr === dueDate) return true;
@@ -172,64 +239,75 @@ export class TaskService {
     const today = new Date();
     const weekLater = formatDate(addDays(today, 14));
 
-    const allTasks = this.getAllTaskItems();
+    const allTaskNotes = this.getAllTaskNotes();
     const allDailyNotes = await this.getAllDailyNotes();
+    const allTaskItems = await this.getAllTaskItems();
 
-    const overdue = new Map<string, { dailyTasks: DailyTask[]; taskItems: TaskItem[]; dailyFile?: TFile }>();
-    const todayData: { dailyTasks: DailyTask[]; taskItems: TaskItem[]; dailyFile?: TFile } = {
-      dailyTasks: [],
+    const overdue = new Map<string, { taskItems: TaskItem[]; taskNotes: TaskNote[] }>();
+    const todayData: { taskItems: TaskItem[]; taskNotes: TaskNote[] } = {
       taskItems: [],
+      taskNotes: [],
     };
-    const upcoming = new Map<string, { dailyTasks: DailyTask[]; taskItems: TaskItem[]; dailyFile?: TFile }>();
-    const noSchedule: TaskItem[] = [];
+    const upcoming = new Map<string, { taskItems: TaskItem[]; taskNotes: TaskNote[] }>();
+    const noSchedule: TaskNote[] = [];
 
-    // Collect dates for categorization
     const overdueDates = new Set<string>();
     const upcomingDates = new Set<string>();
 
-    // Overdue daily notes
+    // Collect overdue dates from daily notes
     for (const note of allDailyNotes) {
-      if (note.date < todayStr && note.tasks.length > 0) {
+      if (note.date < todayStr && note.taskItems.length > 0) {
         overdueDates.add(note.date);
       }
     }
 
-    // Overdue task items (dueDate < today)
-    for (const task of allTasks) {
-      if (task.completed) continue;
-      if (task.dueDate && task.dueDate < todayStr) {
-        overdueDates.add(task.dueDate);
-        if (task.startDate && task.startDate < todayStr && task.startDate !== task.dueDate) {
-          overdueDates.add(task.startDate);
-        }
+    // Collect overdue dates from task notes
+    for (const note of allTaskNotes) {
+      if (note.done) continue;
+      if (note.dueDate && note.dueDate < todayStr) {
+        overdueDates.add(note.dueDate);
       }
     }
 
-    // Upcoming daily notes
+    // Collect overdue dates from task items
+    for (const item of allTaskItems) {
+      if (item.dueDate && item.dueDate < todayStr) {
+        overdueDates.add(item.dueDate);
+      }
+    }
+
+    // Collect upcoming dates from daily notes
     for (const note of allDailyNotes) {
-      if (note.date > todayStr && note.date <= weekLater && note.tasks.length > 0) {
+      if (note.date > todayStr && note.date <= weekLater && note.taskItems.length > 0) {
         upcomingDates.add(note.date);
       }
     }
 
-    // Upcoming task items
-    for (const task of allTasks) {
-      if (task.completed) continue;
-      if (task.dueDate && task.dueDate > todayStr && task.dueDate <= weekLater) {
-        upcomingDates.add(task.dueDate);
+    // Collect upcoming dates from task notes
+    for (const note of allTaskNotes) {
+      if (note.done) continue;
+      if (note.dueDate && note.dueDate > todayStr && note.dueDate <= weekLater) {
+        upcomingDates.add(note.dueDate);
       }
-      if (task.startDate && task.startDate > todayStr && task.startDate <= weekLater) {
-        if (task.startDate !== task.dueDate) {
-          upcomingDates.add(task.startDate);
-        }
+      if (note.startDate && note.startDate > todayStr && note.startDate <= weekLater) {
+        upcomingDates.add(note.startDate);
+      }
+    }
+
+    // Collect upcoming dates from task items
+    for (const item of allTaskItems) {
+      if (item.dueDate && item.dueDate > todayStr && item.dueDate <= weekLater) {
+        upcomingDates.add(item.dueDate);
+      }
+      if (item.startDate && item.startDate > todayStr && item.startDate <= weekLater) {
+        upcomingDates.add(item.startDate);
       }
     }
 
     // Build overdue data
-    const sortedOverdue = Array.from(overdueDates).sort();
-    for (const dateStr of sortedOverdue) {
-      const data = this.getTasksForDate(dateStr, allDailyNotes, allTasks);
-      if (data.dailyTasks.length > 0 || data.taskItems.length > 0) {
+    for (const dateStr of Array.from(overdueDates).sort()) {
+      const data = this.getTasksForDate(dateStr, allDailyNotes, allTaskNotes, allTaskItems);
+      if (data.taskItems.length > 0 || data.taskNotes.length > 0) {
         overdue.set(dateStr, data);
       }
     }
@@ -237,51 +315,61 @@ export class TaskService {
     // Build today data
     const todayNote = allDailyNotes.find((n) => n.date === todayStr);
     if (todayNote) {
-      todayData.dailyTasks = todayNote.tasks;
-      todayData.dailyFile = todayNote.file;
+      todayData.taskItems.push(...todayNote.taskItems);
     }
-    for (const task of allTasks) {
-      if (this.isTaskActiveOnDate(task, todayStr)) {
-        todayData.taskItems.push(task);
+    for (const note of allTaskNotes) {
+      if (this.isTaskNoteActiveOnDate(note, todayStr)) {
+        todayData.taskNotes.push(note);
+      }
+    }
+    for (const item of allTaskItems) {
+      if (isActiveOnDate(item, todayStr)) {
+        todayData.taskItems.push(item);
       }
     }
 
     // Build upcoming data
-    const sortedUpcoming = Array.from(upcomingDates).sort();
-    for (const dateStr of sortedUpcoming) {
-      const data = this.getTasksForDate(dateStr, allDailyNotes, allTasks);
-      if (data.dailyTasks.length > 0 || data.taskItems.length > 0) {
+    for (const dateStr of Array.from(upcomingDates).sort()) {
+      const data = this.getTasksForDate(dateStr, allDailyNotes, allTaskNotes, allTaskItems);
+      if (data.taskItems.length > 0 || data.taskNotes.length > 0) {
         upcoming.set(dateStr, data);
       }
     }
 
-    // No Schedule
-    for (const task of allTasks) {
-      if (!task.completed && !task.startDate && !task.dueDate) {
-        noSchedule.push(task);
+    // Build no schedule (task notes without dates)
+    for (const note of allTaskNotes) {
+      if (!note.done && !note.startDate && !note.dueDate) {
+        noSchedule.push(note);
       }
     }
 
     return { overdue, today: todayData, upcoming, noSchedule };
   }
 
-  /** Get tasks for a specific date (for Overdue/Upcoming: matches startDate/dueDate) */
+  /** Get tasks for a specific date */
   private getTasksForDate(
     dateStr: string,
     allDailyNotes: DailyNote[],
-    allTasks: TaskItem[]
-  ): { dailyTasks: DailyTask[]; taskItems: TaskItem[]; dailyFile?: TFile } {
+    allTaskNotes: TaskNote[],
+    allTaskItems: TaskItem[]
+  ): { taskItems: TaskItem[]; taskNotes: TaskNote[] } {
     const dailyNote = allDailyNotes.find((n) => n.date === dateStr);
-    const dailyTasks = dailyNote?.tasks ?? [];
-    const taskItems: TaskItem[] = [];
+    const taskItems: TaskItem[] = dailyNote?.taskItems ? [...dailyNote.taskItems] : [];
+    const taskNotes: TaskNote[] = [];
 
-    for (const task of allTasks) {
-      if (this.shouldShowTaskOnDate(task, dateStr)) {
-        taskItems.push(task);
+    for (const note of allTaskNotes) {
+      if (this.shouldShowTaskNoteOnDate(note, dateStr)) {
+        taskNotes.push(note);
       }
     }
 
-    return { dailyTasks, taskItems, dailyFile: dailyNote?.file };
+    for (const item of allTaskItems) {
+      if (item.dueDate === dateStr || item.startDate === dateStr) {
+        taskItems.push(item);
+      }
+    }
+
+    return { taskItems, taskNotes };
   }
 
   /** Normalize date string */
@@ -289,12 +377,10 @@ export class TaskService {
     if (!value) return null;
 
     if (typeof value === "string") {
-      // Handle ISO format and YYYY-MM-DD format
       const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
       if (match) return match[1];
     }
 
-    // Date-like object (Obsidian internal format)
     if (typeof value === "object" && value !== null) {
       const obj = value as Record<string, unknown>;
       if (typeof obj.year === "number" && typeof obj.month === "number" && typeof obj.day === "number") {
