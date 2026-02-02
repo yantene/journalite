@@ -1,45 +1,54 @@
 import type { TFile } from "obsidian";
 
-export interface TaskItem {
-  /** Task file */
-  file: TFile;
-  /** File name (without extension) */
-  name: string;
+/** Common interface for items with schedule dates */
+export interface Schedulable {
   /** Start date (YYYY-MM-DD) */
   startDate: string | null;
   /** Due date (YYYY-MM-DD) */
   dueDate: string | null;
-  /** Completed flag */
-  completed: boolean;
 }
 
-export interface DailyTask {
+/** Task note: note with `done` in frontmatter */
+export interface TaskNote extends Schedulable {
+  /** Task file */
+  file: TFile;
+  /** File name (without extension) */
+  name: string;
+  /** Done flag */
+  done: boolean;
+}
+
+/** Task item: checkbox with date pattern at end */
+export interface TaskItem extends Schedulable {
   /** Task text */
   text: string;
-  /** Completed flag */
-  completed: boolean;
   /** Line number */
   line: number;
+  /** Source file */
+  file: TFile;
+  /** Parent task texts (for nested items) */
+  breadcrumbs: string[];
 }
 
+/** Daily note: note with YYYY-MM-DD.md filename */
 export interface DailyNote {
   /** File */
   file: TFile;
   /** Date (YYYY-MM-DD) */
   date: string;
-  /** Incomplete tasks */
-  tasks: DailyTask[];
+  /** Task items in this daily note */
+  taskItems: TaskItem[];
 }
 
 export interface TasksByCategory {
-  overdue: Map<string, { dailyTasks: DailyTask[]; taskItems: TaskItem[]; dailyFile?: TFile }>;
-  today: { dailyTasks: DailyTask[]; taskItems: TaskItem[]; dailyFile?: TFile };
-  upcoming: Map<string, { dailyTasks: DailyTask[]; taskItems: TaskItem[]; dailyFile?: TFile }>;
-  noSchedule: TaskItem[];
+  overdue: Map<string, { taskItems: TaskItem[]; taskNotes: TaskNote[] }>;
+  today: { taskItems: TaskItem[]; taskNotes: TaskNote[] };
+  upcoming: Map<string, { taskItems: TaskItem[]; taskNotes: TaskNote[] }>;
+  noSchedule: TaskNote[];
 }
 
 export type CalendarClickHandler = (date: Date) => void;
 export type CalendarContextMenuHandler = (date: Date, event: MouseEvent) => void;
 export type TaskClickHandler = (file: TFile, line?: number) => void;
-export type DailyTaskToggleHandler = (file: TFile, line: number) => void;
-export type TaskItemToggleHandler = (file: TFile) => void;
+export type TaskItemToggleHandler = (file: TFile, line: number) => void;
+export type TaskNoteToggleHandler = (file: TFile) => void;
