@@ -1,24 +1,31 @@
 import type { TFile } from "obsidian";
-import type { TasksByCategory, TaskItem, DailyTask, TaskClickHandler, DailyTaskToggleHandler, TaskItemToggleHandler } from "../types";
+import type { TasksByCategory, TaskNote, TaskItem, TaskClickHandler, TaskItemToggleHandler, TaskNoteToggleHandler, Schedulable } from "../types";
 import { formatDateWithWeekday, formatDateShort, getTodayStr } from "../utils/dateUtils";
+
+/** Tree node for grouping task items by shared file/parent hierarchy */
+interface TaskTreeNode {
+  label: string;
+  children: Map<string, TaskTreeNode>;
+  items: TaskItem[];
+}
 
 export class TaskListComponent {
   private containerEl: HTMLElement;
   private tasks: TasksByCategory | null = null;
   private onTaskClick: TaskClickHandler;
-  private onDailyTaskToggle: DailyTaskToggleHandler;
   private onTaskItemToggle: TaskItemToggleHandler;
+  private onTaskNoteToggle: TaskNoteToggleHandler;
 
   constructor(
     containerEl: HTMLElement,
     onTaskClick: TaskClickHandler,
-    onDailyTaskToggle: DailyTaskToggleHandler,
-    onTaskItemToggle: TaskItemToggleHandler
+    onTaskItemToggle: TaskItemToggleHandler,
+    onTaskNoteToggle: TaskNoteToggleHandler
   ) {
     this.containerEl = containerEl;
     this.onTaskClick = onTaskClick;
-    this.onDailyTaskToggle = onDailyTaskToggle;
     this.onTaskItemToggle = onTaskItemToggle;
+    this.onTaskNoteToggle = onTaskNoteToggle;
   }
 
   render(): void {
@@ -41,7 +48,7 @@ export class TaskListComponent {
     }
 
     // Today
-    if (today.dailyTasks.length > 0 || today.taskItems.length > 0) {
+    if (today.taskItems.length > 0 || today.taskNotes.length > 0) {
       this.renderTodaySection(today);
     }
 
@@ -58,8 +65,8 @@ export class TaskListComponent {
     // When empty
     if (
       overdue.size === 0 &&
-      today.dailyTasks.length === 0 &&
       today.taskItems.length === 0 &&
+      today.taskNotes.length === 0 &&
       upcoming.size === 0 &&
       noSchedule.length === 0
     ) {
@@ -77,41 +84,34 @@ export class TaskListComponent {
 
   private renderSection(
     title: string,
-    dateMap: Map<string, { dailyTasks: DailyTask[]; taskItems: TaskItem[]; dailyFile?: TFile }>,
+    dateMap: Map<string, { taskItems: TaskItem[]; taskNotes: TaskNote[] }>,
     type: "overdue" | "upcoming"
   ): void {
     const sectionEl = this.containerEl.createDiv(`journalite-section journalite-${type}`);
     sectionEl.createEl("h3", { text: title, cls: "journalite-section-title" });
 
     for (const [dateStr, data] of dateMap) {
-      const dateHeader = sectionEl.createEl("h4", {
+      sectionEl.createEl("h4", {
         text: formatDateWithWeekday(dateStr),
         cls: "journalite-date-header",
       });
 
-      // Daily tasks
-      if (data.dailyTasks.length > 0 && data.dailyFile) {
-        const listEl = sectionEl.createEl("ul", { cls: "journalite-task-list" });
-        for (const task of data.dailyTasks) {
-          this.renderDailyTaskItem(listEl, task, data.dailyFile);
-        }
+      // Task items as grouped tree
+      if (data.taskItems.length > 0) {
+        this.renderTaskItems(sectionEl, data.taskItems);
       }
 
-      // Task pages
-      if (data.taskItems.length > 0) {
+      // Task notes
+      if (data.taskNotes.length > 0) {
         const listEl = sectionEl.createEl("ul", { cls: "journalite-task-list" });
-        for (const task of data.taskItems) {
-          this.renderTaskItem(listEl, task);
+        for (const note of data.taskNotes) {
+          this.renderTaskNote(listEl, note);
         }
       }
     }
   }
 
-  private renderTodaySection(data: {
-    dailyTasks: DailyTask[];
-    taskItems: TaskItem[];
-    dailyFile?: TFile;
-  }): void {
+  private renderTodaySection(data: { taskItems: TaskItem[]; taskNotes: TaskNote[] }): void {
     const sectionEl = this.containerEl.createDiv("journalite-section journalite-today-section");
     sectionEl.createEl("h3", { text: "🔵 Today", cls: "journalite-section-title" });
 
@@ -121,88 +121,144 @@ export class TaskListComponent {
       cls: "journalite-date-header",
     });
 
-    // Daily tasks
-    if (data.dailyTasks.length > 0 && data.dailyFile) {
-      const listEl = sectionEl.createEl("ul", { cls: "journalite-task-list" });
-      for (const task of data.dailyTasks) {
-        this.renderDailyTaskItem(listEl, task, data.dailyFile);
-      }
+    // Task items as grouped tree
+    if (data.taskItems.length > 0) {
+      this.renderTaskItems(sectionEl, data.taskItems);
     }
 
-    // Task pages
-    if (data.taskItems.length > 0) {
+    // Task notes
+    if (data.taskNotes.length > 0) {
       const listEl = sectionEl.createEl("ul", { cls: "journalite-task-list" });
-      for (const task of data.taskItems) {
-        this.renderTaskItem(listEl, task);
+      for (const note of data.taskNotes) {
+        this.renderTaskNote(listEl, note);
       }
     }
   }
 
-  private renderNoScheduleSection(tasks: TaskItem[]): void {
+  private renderNoScheduleSection(notes: TaskNote[]): void {
     const sectionEl = this.containerEl.createDiv("journalite-section journalite-no-schedule");
-    sectionEl.createEl("h3", { text: "⁉️ No Schedule", cls: "journalite-section-title" });
+    sectionEl.createEl("h3", { text: "⚪ No Schedule", cls: "journalite-section-title" });
 
     const listEl = sectionEl.createEl("ul", { cls: "journalite-task-list" });
-    for (const task of tasks) {
-      this.renderTaskItem(listEl, task);
+    for (const note of notes) {
+      this.renderTaskNote(listEl, note);
     }
   }
 
-  private renderDailyTaskItem(listEl: HTMLElement, task: DailyTask, dailyFile: TFile): void {
-    const itemEl = listEl.createEl("li", { cls: "journalite-daily-task" });
+  // --- Task Item Tree ---
+
+  /** Build a tree from task items, grouping by file name and breadcrumbs */
+  private buildTaskTree(items: TaskItem[]): TaskTreeNode {
+    const root: TaskTreeNode = { label: "", children: new Map(), items: [] };
+
+    for (const item of items) {
+      const isDailyNote = /^\d{4}-\d{2}-\d{2}$/.test(item.file.basename);
+      const path: string[] = [];
+      if (!isDailyNote) {
+        path.push(item.file.basename);
+      }
+      path.push(...item.breadcrumbs);
+
+      let node = root;
+      for (const segment of path) {
+        if (!node.children.has(segment)) {
+          node.children.set(segment, { label: segment, children: new Map(), items: [] });
+        }
+        node = node.children.get(segment)!;
+      }
+      node.items.push(item);
+    }
+
+    return root;
+  }
+
+  /** Render task items as a grouped tree */
+  private renderTaskItems(containerEl: HTMLElement, items: TaskItem[]): void {
+    const tree = this.buildTaskTree(items);
+    const treeEl = containerEl.createDiv("journalite-task-tree");
+    this.renderTreeChildren(treeEl, tree, 0);
+  }
+
+  /** Render children of a tree node */
+  private renderTreeChildren(parentEl: HTMLElement, node: TaskTreeNode, depth: number): void {
+    // Render leaf task items at this node
+    for (const item of node.items) {
+      this.renderTaskLeaf(parentEl, item, depth);
+    }
+
+    // Render child groups (collapsible)
+    for (const [, child] of node.children) {
+      this.renderTreeGroup(parentEl, child, depth);
+    }
+  }
+
+  /** Render a collapsible tree group */
+  private renderTreeGroup(parentEl: HTMLElement, node: TaskTreeNode, depth: number): void {
+    const groupEl = parentEl.createDiv("journalite-tree-node");
+
+    // Label row with toggle arrow
+    const labelEl = groupEl.createDiv("journalite-tree-label");
+    labelEl.style.paddingLeft = `${depth * 16}px`;
+
+    const arrowEl = labelEl.createEl("span", {
+      text: "\u25BC",
+      cls: "journalite-tree-arrow",
+    });
+
+    labelEl.createEl("span", {
+      text: node.label,
+      cls: "journalite-tree-label-text",
+    });
+
+    // Children container
+    const childrenEl = groupEl.createDiv("journalite-tree-children");
+    this.renderTreeChildren(childrenEl, node, depth + 1);
+
+    // Toggle collapse
+    labelEl.addEventListener("click", () => {
+      const collapsed = groupEl.hasClass("is-collapsed");
+      if (collapsed) {
+        groupEl.removeClass("is-collapsed");
+        arrowEl.textContent = "\u25BC";
+      } else {
+        groupEl.addClass("is-collapsed");
+        arrowEl.textContent = "\u25B6";
+      }
+    });
+  }
+
+  /** Render a single task item (leaf node in the tree) */
+  private renderTaskLeaf(parentEl: HTMLElement, item: TaskItem, depth: number): void {
+    const taskRowEl = parentEl.createDiv("journalite-task-row");
+    taskRowEl.style.paddingLeft = `${depth * 16}px`;
 
     // Checkbox
-    const checkboxEl = itemEl.createEl("input", {
+    const checkboxEl = taskRowEl.createEl("input", {
       cls: "task-list-item-checkbox",
       attr: { type: "checkbox" },
     });
     checkboxEl.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this.onDailyTaskToggle(dailyFile, task.line);
+      this.onTaskItemToggle(item.file, item.line);
     });
 
+    // Content wrapper
+    const contentEl = taskRowEl.createDiv("journalite-task-content");
+
     // Task text
-    const displayText = task.text || `(L${task.line + 1})`;
-    const textEl = itemEl.createEl("span", {
-      text: displayText,
+    const taskText = item.text || `(L${item.line + 1})`;
+    const textEl = contentEl.createEl("span", {
+      text: taskText,
       cls: "journalite-task-text",
     });
     textEl.addEventListener("click", (e) => {
       e.preventDefault();
-      this.onTaskClick(dailyFile, task.line);
-    });
-  }
-
-  private renderTaskItem(listEl: HTMLElement, task: TaskItem): void {
-    const itemEl = listEl.createEl("li", { cls: "journalite-task-item-rich" });
-
-    // Checkbox
-    const checkboxEl = itemEl.createEl("input", {
-      cls: "task-list-item-checkbox",
-      attr: { type: "checkbox" },
-    });
-    checkboxEl.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.onTaskItemToggle(task.file);
-    });
-
-    // Content (task name + period)
-    const contentEl = itemEl.createEl("div", { cls: "journalite-task-content" });
-
-    // Task name
-    const nameEl = contentEl.createEl("span", {
-      text: task.name,
-      cls: "journalite-task-name",
-    });
-    nameEl.addEventListener("click", (e) => {
-      e.preventDefault();
-      this.onTaskClick(task.file);
+      this.onTaskClick(item.file, item.line);
     });
 
     // Period (if any)
-    const period = this.getTaskPeriodRich(task);
+    const period = this.formatPeriod(item);
     if (period) {
       contentEl.createEl("span", {
         text: period,
@@ -211,10 +267,54 @@ export class TaskListComponent {
     }
   }
 
-  private getTaskPeriodRich(task: TaskItem): string | null {
-    const { startDate, dueDate } = task;
+  // --- Task Note ---
+
+  private renderTaskNote(listEl: HTMLElement, note: TaskNote): void {
+    const itemEl = listEl.createEl("li", { cls: "journalite-task-note" });
+
+    // Checkbox
+    const checkboxEl = itemEl.createEl("input", {
+      cls: "task-list-item-checkbox",
+      attr: { type: "checkbox" },
+    });
+    checkboxEl.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.onTaskNoteToggle(note.file);
+    });
+
+    // Content
+    const contentEl = itemEl.createEl("div", { cls: "journalite-task-content" });
+
+    // Note name
+    const nameEl = contentEl.createEl("span", {
+      text: note.name,
+      cls: "journalite-task-name",
+    });
+    nameEl.addEventListener("click", (e) => {
+      e.preventDefault();
+      this.onTaskClick(note.file);
+    });
+
+    // Period (if any)
+    const period = this.formatPeriod(note);
+    if (period) {
+      contentEl.createEl("span", {
+        text: period,
+        cls: "journalite-task-period",
+      });
+    }
+  }
+
+  // --- Util ---
+
+  private formatPeriod(item: Schedulable): string | null {
+    const { startDate, dueDate } = item;
 
     if (startDate && dueDate) {
+      if (startDate === dueDate) {
+        return `📅 ${formatDateShort(startDate)}`;
+      }
       return `📅 ${formatDateShort(startDate)} → ${formatDateShort(dueDate)}`;
     }
     if (startDate) {

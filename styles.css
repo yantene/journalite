@@ -190,21 +190,74 @@
   padding: 16px;
 }
 
-/* Daily Task Item */
-.journalite-daily-task {
+/* Task Tree */
+.journalite-task-tree {
+  margin: 0 0 8px 0;
+}
+
+/* Tree Node (collapsible group) */
+.journalite-tree-node {
+  /* container */
+}
+
+.journalite-tree-node.is-collapsed > .journalite-tree-children {
+  display: none;
+}
+
+.journalite-tree-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.journalite-tree-label:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.journalite-tree-arrow {
+  font-size: 8px;
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: color 0.1s;
+}
+
+.journalite-tree-label:hover .journalite-tree-arrow {
+  color: var(--text-muted);
+}
+
+.journalite-tree-label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.journalite-tree-children {
+  /* children container */
+}
+
+/* Task Row (leaf item: checkbox + content) */
+.journalite-task-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 8px;
+  padding: 1px 8px;
   border-radius: 4px;
-  list-style: none;
 }
 
-.journalite-daily-task:hover {
+.journalite-task-row:hover {
   background: var(--background-modifier-hover);
 }
 
-.journalite-daily-task .task-list-item-checkbox {
+.journalite-task-row .task-list-item-checkbox {
   /* Obsidian の CSS 変数を使用 */
   appearance: none;
   -webkit-appearance: none;
@@ -219,16 +272,16 @@
   position: relative;
 }
 
-.journalite-daily-task .task-list-item-checkbox:hover {
+.journalite-task-row .task-list-item-checkbox:hover {
   border-color: var(--checkbox-border-color-hover, var(--text-muted));
 }
 
-.journalite-daily-task .task-list-item-checkbox:checked {
+.journalite-task-row .task-list-item-checkbox:checked {
   background-color: var(--checkbox-color, var(--interactive-accent));
   border-color: var(--checkbox-color, var(--interactive-accent));
 }
 
-.journalite-daily-task .task-list-item-checkbox:checked::after {
+.journalite-task-row .task-list-item-checkbox:checked::after {
   content: "";
   position: absolute;
   top: 2px;
@@ -249,7 +302,7 @@
 }
 
 /* Rich Task Item (type: task) */
-.journalite-task-item-rich {
+.journalite-task-note {
   display: flex;
   align-items: flex-start;
   gap: 6px;
@@ -258,11 +311,11 @@
   list-style: none;
 }
 
-.journalite-task-item-rich:hover {
+.journalite-task-note:hover {
   background: var(--background-modifier-hover);
 }
 
-.journalite-task-item-rich .task-list-item-checkbox {
+.journalite-task-note .task-list-item-checkbox {
   appearance: none;
   -webkit-appearance: none;
   width: var(--checkbox-size, 16px);
@@ -277,16 +330,16 @@
   position: relative;
 }
 
-.journalite-task-item-rich .task-list-item-checkbox:hover {
+.journalite-task-note .task-list-item-checkbox:hover {
   border-color: var(--checkbox-border-color-hover, var(--text-muted));
 }
 
-.journalite-task-item-rich .task-list-item-checkbox:checked {
+.journalite-task-note .task-list-item-checkbox:checked {
   background-color: var(--checkbox-color, var(--interactive-accent));
   border-color: var(--checkbox-color, var(--interactive-accent));
 }
 
-.journalite-task-item-rich .task-list-item-checkbox:checked::after {
+.journalite-task-note .task-list-item-checkbox:checked::after {
   content: "";
   position: absolute;
   top: 2px;
@@ -300,10 +353,17 @@
 
 .journalite-task-content {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
   flex: 1;
   min-width: 0;
+}
+
+/* For task notes, keep column layout */
+.journalite-task-note .journalite-task-content {
+  flex-direction: column;
+  gap: 2px;
 }
 
 .journalite-task-name {
@@ -320,4 +380,9 @@
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.2;
+}
+
+/* Date Highlight in Editor */
+.journalite-date-highlight {
+  color: var(--text-accent);
 }
