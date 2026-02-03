@@ -15,17 +15,20 @@ export class TaskListComponent {
   private onTaskClick: TaskClickHandler;
   private onTaskItemToggle: TaskItemToggleHandler;
   private onTaskNoteToggle: TaskNoteToggleHandler;
+  private isDailyNote: (file: TFile) => boolean;
 
   constructor(
     containerEl: HTMLElement,
     onTaskClick: TaskClickHandler,
     onTaskItemToggle: TaskItemToggleHandler,
-    onTaskNoteToggle: TaskNoteToggleHandler
+    onTaskNoteToggle: TaskNoteToggleHandler,
+    isDailyNote: (file: TFile) => boolean
   ) {
     this.containerEl = containerEl;
     this.onTaskClick = onTaskClick;
     this.onTaskItemToggle = onTaskItemToggle;
     this.onTaskNoteToggle = onTaskNoteToggle;
+    this.isDailyNote = isDailyNote;
   }
 
   render(): void {
@@ -152,7 +155,7 @@ export class TaskListComponent {
     const root: TaskTreeNode = { label: "", children: new Map(), items: [] };
 
     for (const item of items) {
-      const isDailyNote = /^\d{4}-\d{2}-\d{2}$/.test(item.file.basename);
+      const isDailyNote = this.isDailyNote(item.file);
       const path: string[] = [];
       if (!isDailyNote) {
         path.push(item.file.basename);

@@ -15,7 +15,7 @@ export class JournaliteView extends ItemView {
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
     this.dailyNoteService = new DailyNoteService(this.app);
-    this.taskService = new TaskService(this.app);
+    this.taskService = new TaskService(this.app, this.dailyNoteService);
   }
 
   getViewType(): string {
@@ -68,7 +68,8 @@ export class JournaliteView extends ItemView {
       tasksEl,
       (file, line) => this.handleTaskClick(file, line),
       (file, line) => this.handleTaskItemToggle(file, line),
-      (file) => this.handleTaskNoteToggle(file)
+      (file) => this.handleTaskNoteToggle(file),
+      (file) => this.dailyNoteService.isDailyNote(file)
     );
 
     // Fetch and display task data

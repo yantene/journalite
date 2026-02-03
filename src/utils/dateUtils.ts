@@ -1,9 +1,23 @@
+import { moment } from "obsidian";
+
 /** Convert Date to YYYY-MM-DD format */
 export function formatDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+/** Format Date using a moment.js format string */
+export function formatDateCustom(date: Date, format: string): string {
+  return moment(date).format(format);
+}
+
+/** Parse a date string using a moment.js format string (strict mode). Returns YYYY-MM-DD or null. */
+export function parseDateString(dateStr: string, format: string): string | null {
+  const m = moment(dateStr, format, true);
+  if (!m.isValid()) return null;
+  return m.format("YYYY-MM-DD");
 }
 
 /** Convert YYYY-MM-DD string to Date */

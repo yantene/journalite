@@ -2,9 +2,10 @@ import type { App, TFile, CachedMetadata } from "obsidian";
 import type { TaskNote, TaskItem, DailyNote, TasksByCategory } from "../types";
 import { formatDate, addDays, getTodayStr } from "../utils/dateUtils";
 import { extractDatesFromText, isActiveOnDate } from "../utils/datePatterns";
+import type { DailyNoteService } from "./DailyNoteService";
 
 export class TaskService {
-  constructor(private app: App) {}
+  constructor(private app: App, private dailyNoteService: DailyNoteService) {}
 
   /** Get Obsidian templates folder */
   private getTemplatesFolder(): string {
@@ -20,9 +21,9 @@ export class TaskService {
     return file.path.startsWith(templatesFolder + "/") || file.path === templatesFolder;
   }
 
-  /** Check if file is a daily note (YYYY-MM-DD.md format) */
+  /** Check if file is a daily note */
   private isDailyNote(file: TFile): boolean {
-    return /^\d{4}-\d{2}-\d{2}\.md$/.test(file.name);
+    return this.dailyNoteService.isDailyNote(file);
   }
 
   /** Get all task notes (notes with `done` in frontmatter, excluding daily notes) */
@@ -61,15 +62,14 @@ export class TaskService {
     for (const file of files) {
       if (this.isTemplateFile(file)) continue;
 
-      // Extract date from filename (YYYY-MM-DD.md format)
-      const match = file.name.match(/^(\d{4}-\d{2}-\d{2})\.md$/);
-      if (!match) continue;
+      const date = this.dailyNoteService.parseDailyNoteDate(file);
+      if (!date) continue;
 
       const cache = this.app.metadataCache.getFileCache(file);
       const taskItems = await this.extractTaskItems(file, cache ?? undefined);
       notes.push({
         file,
-        date: match[1],
+        date,
         taskItems,
       });
     }

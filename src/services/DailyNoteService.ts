@@ -1,5 +1,5 @@
-import { type App, TFile } from "obsidian";
-import { formatDate } from "../utils/dateUtils";
+import { type App, TFile, TFolder } from "obsidian";
+import { formatDate, formatDateCustom, parseDateString } from "../utils/dateUtils";
 
 interface DailyNotesSettings {
   folder: string;
@@ -32,7 +32,7 @@ export class DailyNoteService {
   /** Generate daily note path */
   getDailyNotePath(date: Date): string {
     const settings = this.getSettings();
-    const dateStr = formatDate(date);
+    const dateStr = formatDateCustom(date, settings.format);
     const folder = settings.folder ? `${settings.folder}/` : "";
     return `${folder}${dateStr}.md`;
   }
@@ -59,6 +59,7 @@ export class DailyNoteService {
     let file = this.app.vault.getAbstractFileByPath(path) as TFile | null;
 
     if (!file) {
+      await this.ensureFolderExists(path);
       const content = await this.generateContent(date);
       file = await this.app.vault.create(path, content);
     }
@@ -82,29 +83,72 @@ export class DailyNoteService {
     }
 
     let content = await this.app.vault.read(templateFile);
-    const dateStr = formatDate(date);
 
-    // Replace template variables
-    content = content.replace(/\{\{date:YYYY-MM-DD\}\}/g, dateStr);
-    content = content.replace(/\{\{date\}\}/g, dateStr);
+    // Replace {{date:FORMAT}} with the date in the specified format
+    content = content.replace(/\{\{date:([^}]+)\}\}/g, (_, fmt) => {
+      return formatDateCustom(date, fmt);
+    });
+    // Replace {{date}} with the date in the configured daily notes format
+    content = content.replace(/\{\{date\}\}/g, formatDateCustom(date, settings.format));
 
     return content;
   }
 
-  /** Get list of existing daily note dates (identified by YYYY-MM-DD.md filename) */
+  /** Check if a file is a daily note */
+  isDailyNote(file: TFile): boolean {
+    return this.parseDailyNoteDate(file) !== null;
+  }
+
+  /** Parse date from a daily note file. Returns YYYY-MM-DD or null. */
+  parseDailyNoteDate(file: TFile): string | null {
+    const settings = this.getSettings();
+    const folder = settings.folder;
+
+    // Get path without .md extension
+    const pathWithoutExt = file.path.replace(/\.md$/, "");
+
+    // Strip folder prefix
+    let relativePath: string;
+    if (folder) {
+      if (!pathWithoutExt.startsWith(folder + "/")) return null;
+      relativePath = pathWithoutExt.substring(folder.length + 1);
+    } else {
+      relativePath = pathWithoutExt;
+    }
+
+    return parseDateString(relativePath, settings.format);
+  }
+
+  /** Get list of existing daily note dates */
   getExistingDates(): Set<string> {
     const dates = new Set<string>();
     const files = this.app.vault.getMarkdownFiles();
 
     for (const file of files) {
-      // Extract date from filename (YYYY-MM-DD.md format)
-      const match = file.name.match(/^(\d{4}-\d{2}-\d{2})\.md$/);
-      if (!match) continue;
-
-      dates.add(match[1]);
+      const date = this.parseDailyNoteDate(file);
+      if (date) {
+        dates.add(date);
+      }
     }
 
     return dates;
   }
 
+  /** Ensure parent folders exist for a file path */
+  private async ensureFolderExists(filePath: string): Promise<void> {
+    const lastSlash = filePath.lastIndexOf("/");
+    if (lastSlash < 0) return;
+
+    const folderPath = filePath.substring(0, lastSlash);
+    if (this.app.vault.getAbstractFileByPath(folderPath) instanceof TFolder) return;
+
+    const parts = folderPath.split("/");
+    let current = "";
+    for (const part of parts) {
+      current = current ? `${current}/${part}` : part;
+      if (!this.app.vault.getAbstractFileByPath(current)) {
+        await this.app.vault.createFolder(current);
+      }
+    }
+  }
 }
